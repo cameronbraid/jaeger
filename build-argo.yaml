@@ -1,0 +1,68 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: jaeger-build-
+  namespace: drivenow-infra
+spec:
+  serviceAccountName: drivenow-developer
+  entrypoint: entrypoint
+  nodeSelector:
+    node: node04
+
+  volumes:
+    - name: docker-password
+      secret:
+        secretName: drivenow-developer-docker-password
+
+  arguments:
+    parameters:
+    - name: revision
+      value: "no-clockskew"
+
+  templates:
+
+  - name: entrypoint
+    dag:
+      tasks:
+
+        - name: build
+          template: build
+
+
+  - name: build
+    inputs:
+      artifacts:
+
+      - name: source
+        path: /src
+        git:
+          repo: https://github.com/cameronbraid/jaeger.git
+          revision: "{{workflow.parameters.revision}}"
+    script:
+      image: docker:latest
+      volumeMounts:
+      - name: docker-password
+        mountPath: /root/docker-password
+        subPath: password
+      workingDir: /src
+      env:
+      - name: DOCKER_HOST
+        value: docker-17-10-dind.argo.svc
+      - name: REGISTRY
+        value: docker-registry.default.svc:5000
+      - name: NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace
+
+      command: [sh]
+      source: |
+        
+        until docker ps; do sleep 1; done
+
+        set -x
+
+        cat /root/docker-password | docker login --password-stdin -u serviceaccount $REGISTRY
+
+        docker build -f Dockerfile.query -t $REGISTRY/drivenow-infra/jaeger-query:"{{workflow.parameters.revision}}" . && \
+        docker push $REGISTRY/drivenow-infra/jaeger-query:"{{workflow.parameters.revision}}"
