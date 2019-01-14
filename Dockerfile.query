@@ -10,6 +10,7 @@ RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh && 
     git submodule update --init --recursive && \
     dep ensure
 
+RUN make build_ui
 RUN make build-query
 
 FROM alpine:latest as certs
